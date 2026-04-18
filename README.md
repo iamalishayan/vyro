@@ -1,37 +1,71 @@
 # Pocket-Agent — On-Device Mobile Assistant
 
-This repository contains an end-to-end pipeline to fine-tune `meta-llama/Llama-3.2-1B-Instruct` into a JSON tool-calling agent that operates entirely offline on CPU with high inference speed.
+Fine-tuned **Qwen/Qwen2.5-1.5B-Instruct** (1.5B parameters) for structured JSON tool-calling, designed to run entirely offline on CPU.
 
-## Quickstart (Colab CPU / T4 GPU)
+## Model
 
-The entire project is reproducible.
+- **Base Model:** `Qwen/Qwen2.5-1.5B-Instruct`
+- **Parameters:** 1.5B (within the ≤ 2B limit)
+- **Fine-Tuning:** QLoRA (4-bit) with LoRA rank 16, targeting all linear projections
+- **Quantization:** GGUF Q4_K_M via llama.cpp
+
+## Quickstart (Colab T4)
 
 ```bash
 # 1. Install dependencies
 make setup
 
-# 2. Synthesize dataset (requires GEMINI_API_KEY in .env)
+# 2. Generate synthetic training data (requires GEMINI_API_KEY in .env)
 make data
 
-# 3. Fine-tune LoRA on Llama-3.2-1B-Instruct (requires GPU)
+# 3. Fine-tune with LoRA on T4 GPU (~30 min)
 make train
 
-# 4. Export to Q4_K_M GGUF format
+# 4. Quantize to GGUF Q4_K_M
 make quantize
 
-# 5. Launch the Offline Chatbot UI
+# 5. Launch chatbot demo (gives a public gradio.live URL)
 make demo
 ```
 
-## Strategy & Design Decisions
+Or run everything at once:
+```bash
+make all
+```
 
-- **Base Model:** We selected `meta-llama/Llama-3.2-1B-Instruct` as our 1B parameter base model. It exhibits strong base instruction-following capabilities but easily fits within a `<500 MB` GGUF footprint and naturally executes tool calls at `≤ 200 ms` on a standard CPU node.
-- **Data Formulation:** Our training uses `google-genai` to synthetically bootstrap a rich subset of all expected tool schemas and edge cases (adversarial prompts, refusals, multi-turn context switching). We enforce strict constraint decoding during synthetic generation.
-- **Fine-Tuning System:** We apply QLoRA (via bitsandbytes and peft) using `trl/SFTTrainer`, targeting all linear projection matrices to maximize performance recovery. The chat template specifically ensures adherence to `<tool_call>` output structures.
-- **Quantization:** We employ `llama.cpp` to quantize the model to `Q4_K_M`. Our final footprint is dramatically suppressed to fit well below the requisite `<500 MB`.
+## Project Structure
 
-## Artifacts
+```
+├── starter/                  # Starter pack (schemas, dev set, teacher examples)
+│   ├── public_test.jsonl     # 40 dev-set examples
+│   ├── eval_harness_contract.py
+│   ├── tool_schemas.json
+│   └── teacher_examples.jsonl
+├── data_generate.py          # Synthetic data generation via Gemini API
+├── train.py                  # QLoRA fine-tuning script
+├── quantize.sh               # GGUF quantization via llama.cpp
+├── inference.py              # Grader interface: run(prompt, history) -> str
+├── app.py                    # Gradio chatbot demo
+├── requirements.txt
+├── Makefile
+└── README.md
+```
 
-- Model file: `model-q4_k_m.gguf`
-- Interface script (for graders): `inference.py`
-- Chatbot Demo: `app.py`
+## Design Decisions
+
+- **Qwen2.5-1.5B-Instruct** was chosen over Llama-3.2-1B because it has stronger out-of-the-box instruction following and structured output capabilities, while still fitting comfortably under the 2B parameter and 500MB quantized size limits.
+- **QLoRA** (4-bit base + LoRA adapters) allows full fine-tuning on a free Colab T4 with 16GB VRAM.
+- **Synthetic data** was generated using the Gemini API to create diverse examples covering all 5 tools, multi-turn conversations, refusals, adversarial prompts (typos, code-switching), and edge cases.
+- **llama-cpp-python** is used for inference to guarantee fast CPU performance (< 200ms/turn) with zero network dependencies.
+
+## What Worked
+
+- Loss converged well from 2.5 → 0.09 over 200 steps (~7 epochs on 230 examples)
+- The model learned the `<tool_call>` JSON format reliably
+- Refusals for out-of-scope requests work consistently
+
+## What Didn't / Could Be Better
+
+- More diverse training data (1000+ examples) would improve paraphrase handling
+- Code-switched (multilingual) prompts could use more training examples
+- Could explore Q3_K_S quantization for the < 250MB bonus
