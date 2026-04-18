@@ -1,0 +1,18 @@
+# Local environment and secrets
+.env
+.venv/
+
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+
+# macOS metadata
+.DS_Store
+
+# Project-generated training/build artifacts
+train.jsonl
+results/
+merged_model/
+llama.cpp/
+model-f16.gguf
+model-q4_k_m.gguf

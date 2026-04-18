@@ -1,0 +1,10 @@
+google-generativeai
+python-dotenv
+peft
+trl
+transformers
+datasets
+bitsandbytes
+accelerate
+llama-cpp-python
+gradio
